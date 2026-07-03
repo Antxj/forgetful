@@ -1,0 +1,44 @@
+{
+  "author": "Dreker",
+  "manifest_version": 3,
+  "name": "Forgetful",
+  "version": "1.0.1",
+  "description": "Keep chosen sites and tabs out of your browsing history — automatically, without opening a private window.",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "history",
+    "storage",
+    "unlimitedStorage"
+  ],
+  "background": {
+    "scripts": [
+      "background/background.js"
+    ]
+  },
+  "icons": {
+    "32": "icons/forgetful-logo-32.png",
+    "64": "icons/forgetful-logo-64.png",
+    "128": "icons/forgetful-logo-128.png",
+    "256": "icons/forgetful-logo-256.png",
+    "512": "icons/forgetful-logo-512.png"
+  },
+  "action": {
+    "default_icon": "icons/forgetful-logo-512.png",
+    "default_title": "Forgetful",
+    "default_popup": "popup/nohistory_page.html"
+  },
+  "options_ui": {
+    "page": "setting/index.html",
+    "open_in_tab": true
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "{bb2924b3-55a5-43fd-8d49-24117f9ee157}",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  }
+}

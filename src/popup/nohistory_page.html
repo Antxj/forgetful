@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Forgetful</title>
+        <link href="../shared/fonts/fonts.css" rel="stylesheet">
+        <link href="../shared/theme.css" rel="stylesheet">
+        <link rel="stylesheet" href="./style/style.css">
+    </head>
+    <body class="light_mode">
+        <header id="title">
+            <img src="../icons/forgetful-logo-512.png" alt="Forgetful">
+            <h1>Forgetful</h1>
+            <span id="version_chip">v<span id="versionNumber"></span></span>
+        </header>
+        <p id="error_cannotChange" class="notice hidden_by_default">This is a special page — it can't be excluded from history.</p>
+        <main>
+            <div id="hidden_wrapper" class="hidden_by_default">
+                <div id="site_card">
+                    <span class="card_label">Current site</span>
+                    <span id="page_currently_on" class="url mono"></span>
+                    <span class="card_sub">Tab ID: <span id="id_of_tab" class="mono"></span></span>
+                </div>
+            </div>
+            <div id="button">
+                <button id="thispage" class="depend_on_url toggle_row">
+                    <span class="row_label">This site</span>
+                    <span class="state on not">Excluded from history</span>
+                    <span class="state off">Saved to history</span>
+                </button>
+                <button id="makethetab" class="depend_on_url toggle_row">
+                    <span class="row_label">This tab</span>
+                    <span class="state on not">Excluded from history</span>
+                    <span class="state off">Saved to history</span>
+                </button>
+            </div>
+            <footer id="nav_footer">
+                <button id="tools" title="Forgetful tools">Tools</button>
+                <button id="managenohistory" title="Forgetful settings">Settings</button>
+            </footer>
+        </main>
+    </body>
+    <script src="./script/script.js"></script>
+</html>
