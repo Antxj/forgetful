@@ -16,10 +16,18 @@ async function doesTabExist(tabId) {
     const tabList = await getTabList();
     return tabList.some(id => id == tabId);
 }
+function normalizeHostname(hostname) {
+    return hostname.toLowerCase().replace(/^www\./, "");
+}
+function hostnameMatches(hostname, entry) {
+    const h = normalizeHostname(hostname);
+    const e = normalizeHostname(entry);
+    return h == e || h.endsWith("." + e);
+}
 async function doesURLExist(url) {
     const urlList = await storage_get("nohistory_urlList");
-    const check = urlList.some(u => u == new URL(url).hostname);
-    return check;
+    const hostname = new URL(url).hostname;
+    return urlList.some(u => hostnameMatches(hostname, u));
 }
 async function doesTitleExist(title) {
     const pattern = await storage_get("nohistory_patternList");
@@ -58,13 +66,18 @@ async function manageLinkInNH(mode, link) {
     var link_url = new URL(link);
     if (link_url.hostname.trim() == "" || !(link_url.protocol.match(/^https?:$/).length > 0))
         return;
+    const target = normalizeHostname(link_url.hostname);
     switch (mode) {
         case 0:
-            urlList.push(link_url.hostname);
+            if (!urlList.some(u => normalizeHostname(u) == target))
+                urlList.push(target);
             break;
-        case 1:
-            urlList.splice(urlList.indexOf(link_url.hostname), 1);
+        case 1: {
+            const idx = urlList.findIndex(u => normalizeHostname(u) == target);
+            if (idx >= 0)
+                urlList.splice(idx, 1);
             break;
+        }
         default:
             break;
     }
@@ -97,8 +110,7 @@ browser.runtime.onMessage.addListener(async (sentMessage, _0, _1) => {
                 break;
             }
             case "isURLExist":
-                const urlList = (await storage_get("nohistory_urlList")) || [];
-                resolve(urlList.some(url => url == new URL(tab.url).hostname));
+                resolve(await doesURLExist(tab.url));
                 break;
             case "isTabExist":
                 resolve(await doesTabExist(tab.id));

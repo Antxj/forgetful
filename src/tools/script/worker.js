@@ -1,3 +1,11 @@
+function normalizeHostname(hostname) {
+    return hostname.toLowerCase().replace(/^www\./, "");
+}
+function hostnameMatches(hostname, entry) {
+    const h = normalizeHostname(hostname);
+    const e = normalizeHostname(entry);
+    return h == e || h.endsWith("." + e);
+}
 onmessage = async (e) => {
     var output = [];
     var urlList = e.data[0];
@@ -8,7 +16,7 @@ onmessage = async (e) => {
     all_history.forEach(v => {
         if (v.lastVisitTime < from || to < v.lastVisitTime)
             return;
-        if (urlList.indexOf(new URL(v.url).hostname) >= 0 || patternList.filter(f => {
+        if (urlList.some(u => hostnameMatches(new URL(v.url).hostname, u)) || patternList.filter(f => {
             switch (f.type) {
                 case "string":
                     return v.title.indexOf(`${f.pattern}`) != -1;

@@ -276,11 +276,12 @@ qSel("#add_url").onclick = async () => {
         if (urlObj.protocol.match(/^https?:$/).length > 0) {
             const result = await storage_get("nohistory_urlList");
             let urlList = result;
-            if (urlList.indexOf(urlObj.hostname) >= 0) {
+            const hostname = urlObj.hostname.toLowerCase().replace(/^www\./, "");
+            if (urlList.indexOf(hostname) >= 0) {
                 alert("This URL is already added.");
                 return;
             }
-            urlList.push(urlObj.hostname);
+            urlList.push(hostname);
             await storage().set({
                 "nohistory_urlList": urlList
             });

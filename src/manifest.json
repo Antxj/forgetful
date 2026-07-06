@@ -2,7 +2,7 @@
   "author": "Dreker",
   "manifest_version": 3,
   "name": "Forgetful",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Keep chosen sites and tabs out of your browsing history — automatically, without opening a private window.",
   "permissions": [
     "activeTab",
