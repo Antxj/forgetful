@@ -196,3 +196,22 @@ h3.group {
 }
 
 .hidden_by_default { display: none; }
+
+/* Header cross-navigation (Settings <-> Tools) */
+a.header_nav {
+    margin-left: auto;
+    padding: 8px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 13px;
+    transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+a.header_nav:hover, a.header_nav:focus {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    outline: none;
+}
