@@ -276,7 +276,7 @@ qSel("#add_url").onclick = async () => {
         if (urlObj.protocol.match(/^https?:$/).length > 0) {
             const result = await storage_get("nohistory_urlList");
             let urlList = result;
-            const hostname = urlObj.hostname.toLowerCase().replace(/^www\./, "");
+            const hostname = urlObj.hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
             if (urlList.indexOf(hostname) >= 0) {
                 alert("This URL is already added.");
                 return;

@@ -17,7 +17,7 @@ async function doesTabExist(tabId) {
     return tabList.some(id => id == tabId);
 }
 function normalizeHostname(hostname) {
-    return hostname.toLowerCase().replace(/^www\./, "");
+    return hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
 }
 function hostnameMatches(hostname, entry) {
     const h = normalizeHostname(hostname);

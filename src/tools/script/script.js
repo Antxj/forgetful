@@ -147,7 +147,7 @@ qSel("#add_url").onclick = async () => {
     try {
         const urlObj = new URL(text);
         if (urlObj.protocol.match(/^https?:$/).length > 0) {
-            const hostname = urlObj.hostname.toLowerCase().replace(/^www\./, "");
+            const hostname = urlObj.hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
             if (customUrlList.indexOf(hostname) >= 0) {
                 alert("This URL is already added.");
                 return;
