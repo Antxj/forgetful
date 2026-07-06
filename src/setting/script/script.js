@@ -270,13 +270,17 @@ async function reloadTable() {
 window.addEventListener("load", reloadTable);
 qSel("#reload_everything").onclick = async () => { await reloadTable(); };
 qSel("#add_url").onclick = async () => {
-    const text = qSel("#addorsearchurl")["value"];
+    const text = qSel("#addorsearchurl")["value"].trim();
     try {
-        const urlObj = new URL(text);
+        const urlObj = new URL(/^https?:\/\//i.test(text) ? text : "https://" + text);
         if (urlObj.protocol.match(/^https?:$/).length > 0) {
             const result = await storage_get("nohistory_urlList");
             let urlList = result;
             const hostname = urlObj.hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
+            if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(hostname)) {
+                alert("Sorry, but this is not a valid URL. Please make sure it start with \"http://\" or \"https://\".");
+                return;
+            }
             if (urlList.indexOf(hostname) >= 0) {
                 alert("This URL is already added.");
                 return;
