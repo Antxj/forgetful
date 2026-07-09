@@ -4,6 +4,56 @@ function storage() { return browser.storage.sync; }
 function regexSource(pattern) {
     return pattern instanceof RegExp ? pattern.source : String(pattern).replace(/^\/(.*)\/[gmiyu]*$/, "$1");
 }
+// Lists are split across multiple keys because storage.sync caps each key
+// at 8KB; chunking raises the practical limit to the 100KB total quota.
+const CHUNK_BUDGET = 6000;
+async function listGet(key) {
+    const meta = await storage().get(key + "_chunks");
+    const count = meta[key + "_chunks"];
+    if (count == undefined) {
+        const legacy = await storage().get(key);
+        return legacy[key] || [];
+    }
+    const keys = [];
+    for (let i = 0; i < count; i++)
+        keys.push(key + "_" + i);
+    const data = await storage().get(keys);
+    let out = [];
+    for (let i = 0; i < count; i++)
+        out = out.concat(data[key + "_" + i] || []);
+    return out;
+}
+async function listSet(key, list) {
+    const chunks = [];
+    let current = [];
+    let size = 0;
+    for (const item of list) {
+        const itemSize = JSON.stringify(item).length + 1;
+        if (size + itemSize > CHUNK_BUDGET && current.length > 0) {
+            chunks.push(current);
+            current = [];
+            size = 0;
+        }
+        current.push(item);
+        size += itemSize;
+    }
+    chunks.push(current);
+    const toSet = {};
+    chunks.forEach((c, i) => { toSet[key + "_" + i] = c; });
+    toSet[key + "_chunks"] = chunks.length;
+    await storage().set(toSet);
+    const all = await storage().get(null);
+    const stale = Object.keys(all).filter(k => {
+        if (k == key)
+            return true;
+        if (!k.startsWith(key + "_") || k == key + "_chunks")
+            return false;
+        const n = parseInt(k.slice(key.length + 1), 10);
+        return !isNaN(n) && n >= chunks.length;
+    });
+    if (stale.length > 0)
+        await storage().remove(stale);
+}
 async function storage_get(key) {
     var _a;
     const result = await storage().get(key);
@@ -133,7 +183,7 @@ qSelAll("button.setting_button").forEach(result => {
     };
 });
 qSel("#export_setting").onclick = async () => {
-    var patternList = await storage_get("nohistory_patternList");
+    var patternList = await listGet("nohistory_patternList");
     patternList.forEach((t, i) => {
         switch (t.type) {
             case "regex":
@@ -145,7 +195,7 @@ qSel("#export_setting").onclick = async () => {
     });
     var data = {
         "setting": await storage_get("nohistory_setting"),
-        "urlList": await storage_get("nohistory_urlList"),
+        "urlList": await listGet("nohistory_urlList"),
         "patternList": patternList
     };
     var blob = new Blob([JSON.stringify(data, null, 4)], { type: "text/plain;charset=utf-8" });
@@ -181,7 +231,15 @@ qSel("#import_setting").onclick = async () => {
         alert("The file you uploaded is not a valid config file.");
         return;
     }
-    await storage().set(settingJSON);
+    try {
+        await storage().set({ "nohistory_setting": data.setting });
+        await listSet("nohistory_urlList", data.urlList);
+        await listSet("nohistory_patternList", data.patternList);
+    }
+    catch (e) {
+        alert("Import failed: " + e.message);
+        return;
+    }
     location.reload();
 };
 const url_table = qSel("tbody#url_table");
@@ -193,10 +251,8 @@ async function reloadTable() {
     while (url_table.firstChild) {
         url_table.removeChild(url_table.lastChild);
     }
-    const url_list = await storage_get("nohistory_urlList");
-    const pattern_list = await storage_get("nohistory_patternList");
-    let urlList = url_list;
-    let patternList = pattern_list;
+    let urlList = await listGet("nohistory_urlList");
+    let patternList = await listGet("nohistory_patternList");
     urlList.forEach((url) => {
         url_table.insertAdjacentHTML("beforeend", `
             <tr data-url="${escapeHTML(url)}">
@@ -245,8 +301,7 @@ async function reloadTable() {
         button.onclick = async () => {
             const tr = button.closest("tr");
             if (tr.getAttribute("data-pattern") != null) {
-                const result = await storage_get("nohistory_patternList");
-                let patternList = result;
+                let patternList = await listGet("nohistory_patternList");
                 patternList = patternList.filter(f => {
                     switch (tr.getAttribute("data-type")) {
                         case "string":
@@ -257,14 +312,13 @@ async function reloadTable() {
                             return false;
                     }
                 });
-                await storage().set({ "nohistory_patternList": patternList });
+                await listSet("nohistory_patternList", patternList);
             }
             else if (tr.getAttribute("data-url") != null) {
-                const result = await storage_get("nohistory_urlList");
                 const url = tr.getAttribute("data-url");
-                let urlList = result;
+                let urlList = await listGet("nohistory_urlList");
                 urlList = urlList.filter(e => e != url);
-                await storage().set({ "nohistory_urlList": urlList });
+                await listSet("nohistory_urlList", urlList);
             }
             button.closest("tr").remove();
         };
@@ -277,8 +331,7 @@ qSel("#add_url").onclick = async () => {
     try {
         const urlObj = new URL(/^https?:\/\//i.test(text) ? text : "https://" + text);
         if (urlObj.protocol.match(/^https?:$/).length > 0) {
-            const result = await storage_get("nohistory_urlList");
-            let urlList = result;
+            let urlList = await listGet("nohistory_urlList");
             const hostname = urlObj.hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
             if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(hostname)) {
                 alert("Sorry, but this is not a valid URL. Please make sure it start with \"http://\" or \"https://\".");
@@ -289,9 +342,13 @@ qSel("#add_url").onclick = async () => {
                 return;
             }
             urlList.push(hostname);
-            await storage().set({
-                "nohistory_urlList": urlList
-            });
+            try {
+                await listSet("nohistory_urlList", urlList);
+            }
+            catch (e) {
+                alert("Could not save: " + e.message);
+                return;
+            }
             await reloadTable();
             qSel("#addorsearchurl")["value"] = "";
         }
@@ -306,8 +363,7 @@ qSel("#add_url").onclick = async () => {
 qSel("#add_pattern").onclick = async () => {
     const text = qSel("#addorsearchpattern")["value"];
     const mode = getCheckedValue("pattern_mode");
-    const result = await storage_get("nohistory_patternList");
-    const patternList = result;
+    const patternList = await listGet("nohistory_patternList");
     const valueList = patternList.map(value => value.type == "regex" ? regexSource(value.pattern) : value.pattern.toString());
     var yeahno = false;
     switch (mode) {
@@ -340,9 +396,13 @@ qSel("#add_pattern").onclick = async () => {
             alert("Seems like something is broken. Please report it to the developers.");
             break;
     }
-    await storage().set({
-        "nohistory_patternList": patternList
-    });
+    try {
+        await listSet("nohistory_patternList", patternList);
+    }
+    catch (e) {
+        alert("Could not save: " + e.message);
+        return;
+    }
     await reloadTable();
     qSel("#addorsearchpattern")["value"] = "";
 };

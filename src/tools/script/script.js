@@ -4,6 +4,22 @@ function storage() { return browser.storage.sync; }
 function regexSource(pattern) {
     return pattern instanceof RegExp ? pattern.source : String(pattern).replace(/^\/(.*)\/[gmiyu]*$/, "$1");
 }
+async function listGet(key) {
+    const meta = await storage().get(key + "_chunks");
+    const count = meta[key + "_chunks"];
+    if (count == undefined) {
+        const legacy = await storage().get(key);
+        return legacy[key] || [];
+    }
+    const keys = [];
+    for (let i = 0; i < count; i++)
+        keys.push(key + "_" + i);
+    const data = await storage().get(keys);
+    let out = [];
+    for (let i = 0; i < count; i++)
+        out = out.concat(data[key + "_" + i] || []);
+    return out;
+}
 async function storage_get(key) {
     var _a;
     const result = await storage().get(key);
@@ -216,8 +232,8 @@ search.onclick = async () => {
     var allHistory = await browser.history.search({ text: "", maxResults: Number.MAX_SAFE_INTEGER, startTime: 0 });
     qSel("#search_status").innerText = "In progress";
     if (use_defined_match_list["checked"]) {
-        urlList = await storage_get("nohistory_urlList");
-        patternList = await storage_get("nohistory_patternList");
+        urlList = await listGet("nohistory_urlList");
+        patternList = await listGet("nohistory_patternList");
     }
     else {
         urlList = customUrlList;

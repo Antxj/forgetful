@@ -5,6 +5,56 @@ async function storage_get(key) {
     const result = await storage().get(key);
     return (_a = result[key]) !== null && _a !== void 0 ? _a : false;
 }
+// Lists are split across multiple keys because storage.sync caps each key
+// at 8KB; chunking raises the practical limit to the 100KB total quota.
+const CHUNK_BUDGET = 6000;
+async function listGet(key) {
+    const meta = await storage().get(key + "_chunks");
+    const count = meta[key + "_chunks"];
+    if (count == undefined) {
+        const legacy = await storage().get(key);
+        return legacy[key] || [];
+    }
+    const keys = [];
+    for (let i = 0; i < count; i++)
+        keys.push(key + "_" + i);
+    const data = await storage().get(keys);
+    let out = [];
+    for (let i = 0; i < count; i++)
+        out = out.concat(data[key + "_" + i] || []);
+    return out;
+}
+async function listSet(key, list) {
+    const chunks = [];
+    let current = [];
+    let size = 0;
+    for (const item of list) {
+        const itemSize = JSON.stringify(item).length + 1;
+        if (size + itemSize > CHUNK_BUDGET && current.length > 0) {
+            chunks.push(current);
+            current = [];
+            size = 0;
+        }
+        current.push(item);
+        size += itemSize;
+    }
+    chunks.push(current);
+    const toSet = {};
+    chunks.forEach((c, i) => { toSet[key + "_" + i] = c; });
+    toSet[key + "_chunks"] = chunks.length;
+    await storage().set(toSet);
+    const all = await storage().get(null);
+    const stale = Object.keys(all).filter(k => {
+        if (k == key)
+            return true;
+        if (!k.startsWith(key + "_") || k == key + "_chunks")
+            return false;
+        const n = parseInt(k.slice(key.length + 1), 10);
+        return !isNaN(n) && n >= chunks.length;
+    });
+    if (stale.length > 0)
+        await storage().remove(stale);
+}
 async function getTabList() {
     const result = await browser.storage.session.get("nohistory_tabList");
     return result["nohistory_tabList"] || [];
@@ -25,12 +75,12 @@ function hostnameMatches(hostname, entry) {
     return h == e || h.endsWith("." + e);
 }
 async function doesURLExist(url) {
-    const urlList = await storage_get("nohistory_urlList");
+    const urlList = await listGet("nohistory_urlList");
     const hostname = new URL(url).hostname;
     return urlList.some(u => hostnameMatches(hostname, u));
 }
 async function doesTitleExist(title) {
-    const pattern = await storage_get("nohistory_patternList");
+    const pattern = await listGet("nohistory_patternList");
     return pattern.some(pattern => {
         switch (pattern.type) {
             case "string":
@@ -48,44 +98,32 @@ async function doesTitleExist(title) {
 (async () => {
     // One-time migration from storage.local to storage.sync. Regex patterns
     // become plain strings because storage.sync only accepts JSON values.
-    const syncData = await browser.storage.sync.get(["nohistory_urlList", "nohistory_patternList", "nohistory_setting"]);
-    if (syncData.nohistory_urlList == undefined && syncData.nohistory_patternList == undefined) {
+    const syncData = await browser.storage.sync.get([
+        "nohistory_urlList", "nohistory_urlList_chunks",
+        "nohistory_patternList", "nohistory_patternList_chunks"
+    ]);
+    if (Object.keys(syncData).length == 0) {
         const local = await browser.storage.local.get(["nohistory_urlList", "nohistory_patternList", "nohistory_setting"]);
-        const toWrite = {};
         if (local.nohistory_urlList)
-            toWrite.nohistory_urlList = local.nohistory_urlList;
+            await listSet("nohistory_urlList", local.nohistory_urlList);
         if (local.nohistory_patternList)
-            toWrite.nohistory_patternList = local.nohistory_patternList.map(p => {
+            await listSet("nohistory_patternList", local.nohistory_patternList.map(p => {
                 if (p.type != "regex")
                     return p;
                 const source = p.pattern instanceof RegExp
                     ? p.pattern.source
                     : String(p.pattern).replace(/^\/(.*)\/[gmiyu]*$/, "$1");
                 return { type: "regex", pattern: source };
-            });
+            }));
         if (local.nohistory_setting)
-            toWrite.nohistory_setting = local.nohistory_setting;
-        if (Object.keys(toWrite).length > 0)
-            await browser.storage.sync.set(toWrite);
-    }
-    const urlList = (await storage_get("nohistory_urlList")) || [];
-    const patternList = (await storage_get("nohistory_patternList")) || [];
-    if (urlList.length == 0) {
-        await storage().set({
-            "nohistory_urlList": [],
-        });
-    }
-    if (patternList.length == 0) {
-        await storage().set({
-            "nohistory_patternList": [],
-        });
+            await browser.storage.sync.set({ nohistory_setting: local.nohistory_setting });
     }
 })();
 function escapeString(str) {
     return str.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
 }
 async function manageLinkInNH(mode, link) {
-    const urlList = (await storage_get("nohistory_urlList")) || [];
+    const urlList = await listGet("nohistory_urlList");
     var link_url = new URL(link);
     if (link_url.hostname.trim() == "" || !(link_url.protocol.match(/^https?:$/).length > 0))
         return;
@@ -104,7 +142,7 @@ async function manageLinkInNH(mode, link) {
         default:
             break;
     }
-    await storage().set({ nohistory_urlList: urlList });
+    await listSet("nohistory_urlList", urlList);
 }
 browser.runtime.onMessage.addListener(async (sentMessage, _0, _1) => {
     return new Promise(async (resolve, reject) => {
