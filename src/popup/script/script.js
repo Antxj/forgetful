@@ -1,4 +1,4 @@
-function storage() { return browser.storage.local; }
+function storage() { return browser.storage.sync; }
 ;
 async function storage_get(key) {
     var _a;

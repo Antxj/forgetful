@@ -21,7 +21,7 @@ onmessage = async (e) => {
                 case "string":
                     return v.title.indexOf(`${f.pattern}`) != -1;
                 case "regex":
-                    return v.title.match(f.pattern) != null;
+                    return v.title.match(f.pattern instanceof RegExp ? f.pattern : new RegExp(f.pattern, "gi")) != null;
                 default:
                     return false;
             }

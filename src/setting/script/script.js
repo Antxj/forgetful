@@ -1,6 +1,9 @@
 const reRegex = /\/(.*)\/[gmiyu]*/g;
-function storage() { return browser.storage.local; }
+function storage() { return browser.storage.sync; }
 ;
+function regexSource(pattern) {
+    return pattern instanceof RegExp ? pattern.source : String(pattern).replace(/^\/(.*)\/[gmiyu]*$/, "$1");
+}
 async function storage_get(key) {
     var _a;
     const result = await storage().get(key);
@@ -134,7 +137,7 @@ qSel("#export_setting").onclick = async () => {
     patternList.forEach((t, i) => {
         switch (t.type) {
             case "regex":
-                patternList[i].pattern = t.pattern.toString().replace(reRegex, "$1");
+                patternList[i].pattern = regexSource(t.pattern);
                 break;
             default:
                 return "";
@@ -163,7 +166,7 @@ qSel("#import_setting").onclick = async () => {
     (_a = data.patternList) === null || _a === void 0 ? void 0 : _a.forEach((t, i) => {
         switch (t.type) {
             case "regex":
-                data.patternList[i].pattern = new RegExp(t.pattern, "gi");
+                data.patternList[i].pattern = regexSource(t.pattern);
                 break;
             default:
                 return "";
@@ -215,7 +218,7 @@ async function reloadTable() {
                 output = `${pattern.pattern}`;
                 break;
             case "regex":
-                output = pattern.pattern.toString();
+                output = `/${regexSource(pattern.pattern)}/gi`;
                 break;
             default:
                 output = "";
@@ -249,7 +252,7 @@ async function reloadTable() {
                         case "string":
                             return f.pattern != tr.getAttribute("data-pattern");
                         case "regex":
-                            return f.pattern.toString() != new RegExp(tr.getAttribute("data-pattern").replace(reRegex, "$1"), "gi").toString();
+                            return regexSource(f.pattern) != tr.getAttribute("data-pattern").replace(reRegex, "$1");
                         default:
                             return false;
                     }
@@ -305,14 +308,12 @@ qSel("#add_pattern").onclick = async () => {
     const mode = getCheckedValue("pattern_mode");
     const result = await storage_get("nohistory_patternList");
     const patternList = result;
-    const valueList = patternList.map(value => value.pattern.toString());
+    const valueList = patternList.map(value => value.type == "regex" ? regexSource(value.pattern) : value.pattern.toString());
     var yeahno = false;
     switch (mode) {
         case "string":
-            yeahno = valueList.indexOf(text) >= 0;
-            break;
         case "regex":
-            yeahno = valueList.indexOf(new RegExp(text, "gi").toString()) >= 0;
+            yeahno = valueList.indexOf(text) >= 0;
             break;
         default:
             yeahno = false;
@@ -332,7 +333,7 @@ qSel("#add_pattern").onclick = async () => {
         case "regex":
             patternList.push({
                 "type": "regex",
-                "pattern": new RegExp(text, "gi")
+                "pattern": text
             });
             break;
         default:

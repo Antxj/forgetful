@@ -1,4 +1,4 @@
-function storage() { return browser.storage.local; }
+function storage() { return browser.storage.sync; }
 ;
 async function storage_get(key) {
     var _a;
@@ -37,7 +37,8 @@ async function doesTitleExist(title) {
                 var check_str = title.indexOf(`${pattern.pattern}`);
                 return check_str != -1;
             case "regex":
-                var check_re = title.match(pattern.pattern);
+                var re = pattern.pattern instanceof RegExp ? pattern.pattern : new RegExp(pattern.pattern, "gi");
+                var check_re = title.match(re);
                 return check_re != null;
             default:
                 return false;
@@ -45,6 +46,28 @@ async function doesTitleExist(title) {
     });
 }
 (async () => {
+    // One-time migration from storage.local to storage.sync. Regex patterns
+    // become plain strings because storage.sync only accepts JSON values.
+    const syncData = await browser.storage.sync.get(["nohistory_urlList", "nohistory_patternList", "nohistory_setting"]);
+    if (syncData.nohistory_urlList == undefined && syncData.nohistory_patternList == undefined) {
+        const local = await browser.storage.local.get(["nohistory_urlList", "nohistory_patternList", "nohistory_setting"]);
+        const toWrite = {};
+        if (local.nohistory_urlList)
+            toWrite.nohistory_urlList = local.nohistory_urlList;
+        if (local.nohistory_patternList)
+            toWrite.nohistory_patternList = local.nohistory_patternList.map(p => {
+                if (p.type != "regex")
+                    return p;
+                const source = p.pattern instanceof RegExp
+                    ? p.pattern.source
+                    : String(p.pattern).replace(/^\/(.*)\/[gmiyu]*$/, "$1");
+                return { type: "regex", pattern: source };
+            });
+        if (local.nohistory_setting)
+            toWrite.nohistory_setting = local.nohistory_setting;
+        if (Object.keys(toWrite).length > 0)
+            await browser.storage.sync.set(toWrite);
+    }
     const urlList = (await storage_get("nohistory_urlList")) || [];
     const patternList = (await storage_get("nohistory_patternList")) || [];
     if (urlList.length == 0) {
