@@ -133,9 +133,13 @@
             </div>
             <div class="setting_page" data-correspondingTab="backup">
                 <div>
-                    <h3 class="group">Actions</h3>
-                    <button id="import_setting" class="with_text">Import</button>
-                    <button id="export_setting" class="with_text">Export</button>
+                    <h3 class="group">Full backup (settings + all lists)</h3>
+                    <button id="export_setting" class="with_text">Export JSON</button>
+                    <button id="import_setting" class="with_text">Import JSON</button>
+                    <h3 class="group">Site list only</h3>
+                    <p>Plain text, one domain per line — easy to edit by hand. Importing merges with the current list; lines starting with # are ignored.</p>
+                    <button id="export_sites" class="with_text">Export .txt</button>
+                    <button id="import_sites" class="with_text">Import .txt</button>
                 </div>
             </div>
             <div class="setting_page" data-correspondingTab="help">

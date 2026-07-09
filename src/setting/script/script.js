@@ -105,7 +105,7 @@ function saveAs(blob, filename) {
     window.URL.revokeObjectURL(a.href);
     document.body.removeChild(a);
 }
-function openFile() {
+function openFile(accept) {
     return new Promise((resolve, reject) => {
         const readFile = function (e) {
             var file = e.target["files"][0];
@@ -127,7 +127,7 @@ function openFile() {
         fileInput.type = 'file';
         fileInput.style.display = 'none';
         fileInput.onchange = readFile;
-        fileInput.accept = "application/json";
+        fileInput.accept = accept || "application/json";
         document.body.appendChild(fileInput);
         fileInput.click();
     });
@@ -199,7 +199,51 @@ qSel("#export_setting").onclick = async () => {
         "patternList": patternList
     };
     var blob = new Blob([JSON.stringify(data, null, 4)], { type: "text/plain;charset=utf-8" });
-    saveAs(blob, "nohistory_config.json");
+    saveAs(blob, "forgetful_config.json");
+};
+function parseSiteList(text, existingList) {
+    const list = existingList.slice();
+    let added = 0;
+    let skipped = 0;
+    text.split(/\r?\n/).forEach(line => {
+        line = line.trim();
+        if (line == "" || line.startsWith("#"))
+            return;
+        line = line.replace(/^https?:\/\//i, "").split("/")[0].split(":")[0];
+        const hostname = line.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
+        if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(hostname)) {
+            skipped++;
+            return;
+        }
+        if (list.indexOf(hostname) >= 0) {
+            skipped++;
+            return;
+        }
+        list.push(hostname);
+        added++;
+    });
+    return { list, added, skipped };
+}
+qSel("#export_sites").onclick = async () => {
+    const urlList = await listGet("nohistory_urlList");
+    var blob = new Blob([urlList.join("\n") + "\n"], { type: "text/plain;charset=utf-8" });
+    saveAs(blob, "forgetful_sites.txt");
+};
+qSel("#import_sites").onclick = async () => {
+    const result = await openFile("text/plain,.txt");
+    if (result == null || typeof result != "string")
+        return;
+    const urlList = await listGet("nohistory_urlList");
+    const parsed = parseSiteList(result, urlList);
+    try {
+        await listSet("nohistory_urlList", parsed.list);
+    }
+    catch (e) {
+        alert("Could not save: " + e.message);
+        return;
+    }
+    alert(`Imported ${parsed.added} site(s), skipped ${parsed.skipped} (duplicates, comments or invalid lines).`);
+    await reloadTable();
 };
 qSel("#import_setting").onclick = async () => {
     var _a;
