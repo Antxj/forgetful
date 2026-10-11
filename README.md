@@ -7,7 +7,7 @@
 Forgetful is a Firefox extension that removes selected pages from your browsing history as you browse. Mark a site once and it never shows up in your history again; mark a tab and everything you open in it stays off the record.
 
 <p align="center">
-  <a href="https://addons.mozilla.org/firefox/addon/forgetful/"><img src="https://img.shields.io/badge/Get%20it%20for%20Firefox-FF7139?style=for-the-badge&logo=firefoxbrowser&logoColor=white" alt="Get it for Firefox" height="40"></a>
+  <a href="https://addons.mozilla.org/firefox/addon/forgetful/"><img src="screenshots/get-it-for-firefox.svg" alt="Get it for Firefox" height="40"></a>
 </p>
 
 <p align="center">
