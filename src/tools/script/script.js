@@ -229,7 +229,6 @@ search.onclick = async () => {
     clean["disabled"] = true;
     var urlList = [];
     var patternList = [];
-    var allHistory = await browser.history.search({ text: "", maxResults: Number.MAX_SAFE_INTEGER, startTime: 0 });
     qSel("#search_status").innerText = "In progress";
     if (use_defined_match_list["checked"]) {
         urlList = await listGet("nohistory_urlList");
@@ -310,18 +309,23 @@ search.onclick = async () => {
             lastEntryObserver.observe(last_history_entry);
         }
     };
+    // Let the history API do the date filtering instead of copying the whole
+    // history into the worker.
+    var allHistory = await browser.history.search({ text: "", maxResults: Number.MAX_SAFE_INTEGER, startTime: from * 1000, endTime: to * 1000 });
     worker.postMessage([urlList, patternList, allHistory, from * 1000, to * 1000]);
 };
 clean.onclick = async () => {
     if (!confirm("Are you sure you want to clean the history?"))
         return;
-    qSel("#search_status").innerText = "In progress (This might take a while)";
-    setTimeout(() => {
-        history_entry_list_to_clean.forEach(async (entry) => {
-            await browser.history.deleteUrl({ url: entry.url });
-        });
-        qSel("#search_status").innerText = "Clean complete";
-        alert("The history has been cleaned successfully.\nAnd just to make sure, do a search again to see if everything is gone.");
-        clean["disabled"] = true;
-    }, 1000);
+    clean["disabled"] = true;
+    search["disabled"] = true;
+    const entries = history_entry_list_to_clean;
+    const batchSize = 50;
+    for (let i = 0; i < entries.length; i += batchSize) {
+        qSel("#search_status").innerText = `In progress (${i}/${entries.length})`;
+        await Promise.all(entries.slice(i, i + batchSize).map(entry => browser.history.deleteUrl({ url: entry.url })));
+    }
+    search["disabled"] = false;
+    qSel("#search_status").innerText = "Clean complete";
+    alert("The history has been cleaned successfully.\nAnd just to make sure, do a search again to see if everything is gone.");
 };

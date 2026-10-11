@@ -62,43 +62,19 @@ function toggleButton(button, on) {
     button.querySelector(".off").classList[on ? "add" : "remove"]("not");
     button.style.setProperty("--current-status-color", on ? "var(--button-disabled)" : "var(--button-enabled)");
 }
-async function isURLExist() {
-    const result = await browser.runtime.sendMessage("isURLExist");
+function setURLButton(result) {
     urlButton.title = `Is this URL going to be saved to history? ${result ? "No" : "Yes"}`;
     toggleButton(urlButton, result);
 }
-async function isTabExist() {
-    const result = await browser.runtime.sendMessage("isTabExist");
+function setTabButton(result) {
     tabButton.title = `Is every single link in this tab going to be saved to history? ${result ? "No" : "Yes"}`;
     toggleButton(tabButton, result);
 }
 window.addEventListener('load', async () => {
-    var _a;
     qSel("#versionNumber").innerText = browser.runtime.getManifest().version + (browser.runtime.id.includes("@temporary-addon") ? " (If you don't know what you are doing, please install this extension in a normal way.)" : "");
-    await isURLExist();
-    await isTabExist();
+    const statePromise = browser.runtime.sendMessage("getState");
     await updateConf();
-    const currentURL = await browser.runtime.sendMessage("getCurrentURL");
-    const urlObj = new URL(currentURL);
-    const currentTabId = await browser.runtime.sendMessage("getCurrentTabId");
-    if (urlObj.hostname.trim() == "" || !(((_a = urlObj.protocol.match(/^https?:$/)) === null || _a === void 0 ? void 0 : _a.length) > 0)) {
-        qSel("#error_cannotChange").classList.remove("hidden_by_default");
-        qSelAll(".depend_on_url").forEach(v => v.classList.add("grayed_out"));
-        validURL = false;
-    }
-    else {
-        qSel("#hidden_wrapper").classList.remove("hidden_by_default");
-        qSelAll(".depend_on_url").forEach(v => v.classList.remove("grayed_out"));
-        validURL = true;
-    }
-    qSel("#page_currently_on").innerText = urlObj.hostname;
-    qSel("#id_of_tab").innerText = currentTabId.toString();
-    const setting = await storage_get("nohistory_setting");
-    if (setting == null) {
-        await storage().set({
-            nohistory_setting: default_setting
-        });
-    }
+    const [state, setting] = await Promise.all([statePromise, storage_get("nohistory_setting")]);
     if (setting === null || setting === void 0 ? void 0 : setting.darkmode) {
         document.body.classList.add("dark_mode");
         document.body.classList.remove("light_mode");
@@ -107,16 +83,35 @@ window.addEventListener('load', async () => {
         document.body.classList.remove("dark_mode");
         document.body.classList.add("light_mode");
     }
+    let urlObj = null;
+    try {
+        urlObj = new URL(state.url);
+    }
+    catch (_) { }
+    if (!urlObj || urlObj.hostname.trim() == "" || !/^https?:$/.test(urlObj.protocol)) {
+        qSel("#error_cannotChange").classList.remove("hidden_by_default");
+        qSelAll(".depend_on_url").forEach(v => v.classList.add("grayed_out"));
+        validURL = false;
+    }
+    else {
+        qSel("#hidden_wrapper").classList.remove("hidden_by_default");
+        qSelAll(".depend_on_url").forEach(v => v.classList.remove("grayed_out"));
+        validURL = true;
+        setURLButton(state.urlExists);
+        setTabButton(state.tabExists);
+    }
+    qSel("#page_currently_on").innerText = urlObj ? urlObj.hostname : "";
+    qSel("#id_of_tab").innerText = state.tabId.toString();
 });
 urlButton.addEventListener("click", async () => {
     const result = await browser.runtime.sendMessage("isURLExist");
     await browser.runtime.sendMessage(result ? "removeItem" : "addItem");
-    await isURLExist();
+    setURLButton(await browser.runtime.sendMessage("isURLExist"));
 });
 tabButton.addEventListener("click", async () => {
     const result = await browser.runtime.sendMessage("isTabExist");
     await browser.runtime.sendMessage(result ? "removeTab" : "addTab");
-    await isTabExist();
+    setTabButton(await browser.runtime.sendMessage("isTabExist"));
 });
 optionPage.addEventListener("click", async () => {
     await browser.runtime.openOptionsPage();

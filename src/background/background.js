@@ -1,10 +1,5 @@
 function storage() { return browser.storage.sync; }
 ;
-async function storage_get(key) {
-    var _a;
-    const result = await storage().get(key);
-    return (_a = result[key]) !== null && _a !== void 0 ? _a : false;
-}
 // Lists are split across multiple keys because storage.sync caps each key
 // at 8KB; chunking raises the practical limit to the 100KB total quota.
 const CHUNK_BUDGET = 6000;
@@ -55,45 +50,90 @@ async function listSet(key, list) {
     if (stale.length > 0)
         await storage().remove(stale);
 }
-async function getTabList() {
-    const result = await browser.storage.session.get("nohistory_tabList");
-    return result["nohistory_tabList"] || [];
-}
-async function setTabList(list) {
-    await browser.storage.session.set({ nohistory_tabList: list });
-}
-async function doesTabExist(tabId) {
-    const tabList = await getTabList();
-    return tabList.some(id => id == tabId);
-}
 function normalizeHostname(hostname) {
     return hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
 }
-function hostnameMatches(hostname, entry) {
-    const h = normalizeHostname(hostname);
-    const e = normalizeHostname(entry);
-    return h == e || h.endsWith("." + e);
+function parseURL(url) {
+    try {
+        return new URL(url);
+    }
+    catch (_) {
+        return null;
+    }
+}
+function isWebURL(urlObj) {
+    return !!urlObj && urlObj.hostname.trim() != "" && /^https?:$/.test(urlObj.protocol);
+}
+// Rules and settings are cached in memory so history and tab events don't
+// hit storage.sync on every page load. The cache is dropped whenever sync
+// storage changes (popup, settings page or another synced device).
+let rulesPromise = null;
+function compilePattern(p) {
+    if (p.type == "string")
+        return { type: "string", text: `${p.pattern}` };
+    if (p.type == "regex") {
+        try {
+            const source = p.pattern instanceof RegExp ? p.pattern.source : String(p.pattern);
+            return { type: "regex", re: new RegExp(source, "i") };
+        }
+        catch (_) {
+            return null;
+        }
+    }
+    return null;
+}
+async function loadRules() {
+    const [urlList, patternList, settingResult] = await Promise.all([
+        listGet("nohistory_urlList"),
+        listGet("nohistory_patternList"),
+        storage().get("nohistory_setting")
+    ]);
+    return {
+        hosts: urlList.map(normalizeHostname),
+        patterns: patternList.map(compilePattern).filter(p => p != null),
+        setting: settingResult.nohistory_setting || {}
+    };
+}
+function getRules() {
+    if (!rulesPromise)
+        rulesPromise = loadRules().catch(err => { rulesPromise = null; throw err; });
+    return rulesPromise;
+}
+browser.storage.onChanged.addListener((changes, area) => {
+    if (area != "sync")
+        return;
+    if (!Object.keys(changes).some(k => k.startsWith("nohistory_")))
+        return;
+    rulesPromise = null;
+    refreshActiveBadges();
+});
+let tabSetPromise = null;
+function getTabSet() {
+    if (!tabSetPromise)
+        tabSetPromise = browser.storage.session.get("nohistory_tabList")
+            .then(r => new Set(r["nohistory_tabList"] || []));
+    return tabSetPromise;
+}
+async function saveTabSet(set) {
+    await browser.storage.session.set({ nohistory_tabList: [...set] });
+}
+async function doesTabExist(tabId) {
+    return (await getTabSet()).has(tabId);
+}
+function hostMatches(rules, url) {
+    const urlObj = parseURL(url);
+    if (!urlObj)
+        return false;
+    const h = normalizeHostname(urlObj.hostname);
+    return rules.hosts.some(e => h == e || h.endsWith("." + e));
+}
+function titleMatches(rules, title) {
+    if (!title)
+        return false;
+    return rules.patterns.some(p => p.type == "string" ? title.indexOf(p.text) != -1 : p.re.test(title));
 }
 async function doesURLExist(url) {
-    const urlList = await listGet("nohistory_urlList");
-    const hostname = new URL(url).hostname;
-    return urlList.some(u => hostnameMatches(hostname, u));
-}
-async function doesTitleExist(title) {
-    const pattern = await listGet("nohistory_patternList");
-    return pattern.some(pattern => {
-        switch (pattern.type) {
-            case "string":
-                var check_str = title.indexOf(`${pattern.pattern}`);
-                return check_str != -1;
-            case "regex":
-                var re = pattern.pattern instanceof RegExp ? pattern.pattern : new RegExp(pattern.pattern, "gi");
-                var check_re = title.match(re);
-                return check_re != null;
-            default:
-                return false;
-        }
-    });
+    return hostMatches(await getRules(), url);
 }
 (async () => {
     // One-time migration from storage.local to storage.sync. Regex patterns
@@ -119,14 +159,11 @@ async function doesTitleExist(title) {
             await browser.storage.sync.set({ nohistory_setting: local.nohistory_setting });
     }
 })();
-function escapeString(str) {
-    return str.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-}
 async function manageLinkInNH(mode, link) {
-    const urlList = await listGet("nohistory_urlList");
-    var link_url = new URL(link);
-    if (link_url.hostname.trim() == "" || !(link_url.protocol.match(/^https?:$/).length > 0))
+    const link_url = parseURL(link);
+    if (!isWebURL(link_url))
         return;
+    const urlList = await listGet("nohistory_urlList");
     const target = normalizeHostname(link_url.hostname);
     switch (mode) {
         case 0:
@@ -144,92 +181,98 @@ async function manageLinkInNH(mode, link) {
     }
     await listSet("nohistory_urlList", urlList);
 }
-browser.runtime.onMessage.addListener(async (sentMessage, _0, _1) => {
-    return new Promise(async (resolve, reject) => {
-        var tabs = await browser.tabs.query({ currentWindow: true, active: true });
-        let tab = tabs[0];
-        switch (sentMessage) {
-            case "addItem":
-                await manageLinkInNH(0, tab.url);
-                resolve(null);
-                break;
-            case "removeItem":
-                await manageLinkInNH(1, tab.url);
-                resolve(null);
-                break;
-            case "addTab": {
-                const tabList = await getTabList();
-                tabList.push(tab.id);
-                await setTabList(tabList);
-                resolve(null);
-                break;
-            }
-            case "removeTab": {
-                const tabList = await getTabList();
-                await setTabList(tabList.filter(id => id != tab.id));
-                resolve(null);
-                break;
-            }
-            case "isURLExist":
-                resolve(await doesURLExist(tab.url));
-                break;
-            case "isTabExist":
-                resolve(await doesTabExist(tab.id));
-                break;
-            case "getCurrentURL":
-                resolve(tab.url);
-                break;
-            case "getCurrentTabId":
-                resolve(tab.id);
-                break;
-            default:
-                reject(false);
-                break;
+async function handleMessage(sentMessage) {
+    const tabs = await browser.tabs.query({ currentWindow: true, active: true });
+    const tab = tabs[0];
+    switch (sentMessage) {
+        case "addItem":
+            await manageLinkInNH(0, tab.url);
+            return null;
+        case "removeItem":
+            await manageLinkInNH(1, tab.url);
+            return null;
+        case "addTab": {
+            const set = await getTabSet();
+            set.add(tab.id);
+            await saveTabSet(set);
+            updateBadge(tab);
+            return null;
         }
-    });
-});
+        case "removeTab": {
+            const set = await getTabSet();
+            set.delete(tab.id);
+            await saveTabSet(set);
+            updateBadge(tab);
+            return null;
+        }
+        case "getState":
+            return {
+                url: tab.url,
+                tabId: tab.id,
+                urlExists: await doesURLExist(tab.url),
+                tabExists: await doesTabExist(tab.id)
+            };
+        case "isURLExist":
+            return await doesURLExist(tab.url);
+        case "isTabExist":
+            return await doesTabExist(tab.id);
+        case "getCurrentURL":
+            return tab.url;
+        case "getCurrentTabId":
+            return tab.id;
+        default:
+            throw false;
+    }
+}
+browser.runtime.onMessage.addListener((sentMessage) => handleMessage(sentMessage));
 browser.tabs.onRemoved.addListener(async (tabId) => {
-    const tabList = await getTabList();
-    await setTabList(tabList.filter(id => id != tabId));
+    const set = await getTabSet();
+    if (set.delete(tabId))
+        await saveTabSet(set);
 });
 browser.history.onTitleChanged.addListener(async (data) => {
-    const check = await doesTitleExist(data.title);
-    if (check)
+    if (titleMatches(await getRules(), data.title))
         await browser.history.deleteUrl({ url: data.url });
 });
 browser.history.onVisited.addListener(async (history_data) => {
-    const check = await doesURLExist(history_data.url) || await doesTitleExist(history_data.title);
-    if (check) {
+    const rules = await getRules();
+    if (hostMatches(rules, history_data.url) || titleMatches(rules, history_data.title))
         await browser.history.deleteUrl({ url: history_data.url });
-    }
 });
-browser.tabs.onUpdated.addListener(async (e, changeInfo, updatedTab) => {
-    var _a;
-    const check = await doesTabExist(e);
-    if (check && (updatedTab === null || updatedTab === void 0 ? void 0 : updatedTab.url)) {
-        await browser.history.deleteUrl({ url: updatedTab.url });
-    }
-    const setting = await storage_get("nohistory_setting");
-    if (!setting.statusBadge) {
-        browser.action.setBadgeText({ text: "" });
+async function updateBadge(tab) {
+    if (!tab)
+        return;
+    const rules = await getRules();
+    if (!rules.setting.statusBadge) {
+        browser.action.setBadgeText({ tabId: tab.id, text: "" });
         return;
     }
-    var tabs = await browser.tabs.query({ currentWindow: true, active: true });
-    if (!tabs[0])
+    if (!isWebURL(parseURL(tab.url))) {
+        browser.action.setBadgeText({ tabId: tab.id, text: "?" });
+        browser.action.setBadgeBackgroundColor({ tabId: tab.id, color: [107, 114, 128, 255] });
+        browser.action.setBadgeTextColor({ tabId: tab.id, color: [255, 255, 255, 255] });
         return;
-    var matched = (await doesURLExist(tabs[0].url)) || (await doesTabExist(tabs[0].id)) || (await doesTitleExist(tabs[0].title));
-    const urlObj = new URL(tabs[0].url);
-    if (urlObj.hostname.trim() == "" || !(((_a = urlObj.protocol.match(/^https?:$/)) === null || _a === void 0 ? void 0 : _a.length) > 0)) {
-        browser.action.setBadgeText({ text: "?" });
-        browser.action.setBadgeBackgroundColor({ color: [107, 114, 128, 255] });
-        browser.action.setBadgeTextColor({ color: [255, 255, 255, 255] });
     }
-    else if (matched) {
-        browser.action.setBadgeText({ text: "✓" });
-        browser.action.setBadgeBackgroundColor({ color: [22, 163, 74, 255] });
-        browser.action.setBadgeTextColor({ color: [255, 255, 255, 255] });
+    const matched = hostMatches(rules, tab.url) || (await doesTabExist(tab.id)) || titleMatches(rules, tab.title);
+    if (matched) {
+        browser.action.setBadgeText({ tabId: tab.id, text: "✓" });
+        browser.action.setBadgeBackgroundColor({ tabId: tab.id, color: [22, 163, 74, 255] });
+        browser.action.setBadgeTextColor({ tabId: tab.id, color: [255, 255, 255, 255] });
     }
     else {
-        browser.action.setBadgeText({ text: "" });
+        browser.action.setBadgeText({ tabId: tab.id, text: "" });
     }
+}
+async function refreshActiveBadges() {
+    const tabs = await browser.tabs.query({ active: true });
+    tabs.forEach(updateBadge);
+}
+// Filtered so favicon, audio and other unrelated tab updates don't wake us.
+browser.tabs.onUpdated.addListener(async (tabId, changeInfo, updatedTab) => {
+    if (updatedTab.url && await doesTabExist(tabId))
+        await browser.history.deleteUrl({ url: updatedTab.url });
+    await updateBadge(updatedTab);
+}, { properties: ["url", "title", "status"] });
+browser.tabs.onActivated.addListener(async ({ tabId }) => {
+    updateBadge(await browser.tabs.get(tabId));
 });
