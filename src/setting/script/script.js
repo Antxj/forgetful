@@ -65,9 +65,6 @@ function qSel(selector) {
 function qSelAll(selector) {
     return document.querySelectorAll(selector);
 }
-function escapeHTML(str) {
-    return String(str).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c]);
-}
 function toggleDarkMode(isIt) {
     if (isIt) {
         document.body.classList.add("dark_mode");
@@ -298,18 +295,7 @@ async function reloadTable() {
     let urlList = await listGet("nohistory_urlList");
     let patternList = await listGet("nohistory_patternList");
     urlList.forEach((url) => {
-        url_table.insertAdjacentHTML("beforeend", `
-            <tr data-url="${escapeHTML(url)}">
-                <td>
-                    <p>${escapeHTML(url)}</p>
-                </td>
-                <td>
-                    <button class="remove">
-                        <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg>
-                    </button>
-                </td>
-            </tr>
-        `);
+        url_table.appendChild(tableRow({ "data-url": url }, [url], true));
     });
     patternList.forEach((pattern) => {
         var output = "";
@@ -324,21 +310,7 @@ async function reloadTable() {
                 output = "";
                 break;
         }
-        pattern_table.insertAdjacentHTML("beforeend", `
-            <tr data-pattern="${escapeHTML(output)}" data-type="${escapeHTML(pattern.type)}">
-                <td>
-                    <p>${escapeHTML(output)}</p>
-                </td>
-                <td>
-                    <p>${escapeHTML(pattern.type)}</p>
-                </td>
-                <td>
-                    <button class="remove">
-                        <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#000000"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg>
-                    </button>
-                </td>
-            </tr>
-        `);
+        pattern_table.appendChild(tableRow({ "data-pattern": output, "data-type": pattern.type }, [output, pattern.type], true));
     });
     qSelAll("button.remove").forEach(e => {
         var button = e;
