@@ -99,6 +99,16 @@ div.option {
 }
 div.option p { margin: 0; }
 
+/* About card */
+div.about_card {
+    padding: 4px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+div#content a { color: var(--accent); text-decoration: none; }
+div#content a:hover, div#content a:focus { text-decoration: underline; }
+
 /* Add-URL / add-pattern rows */
 div#manage_url_box, div#manage_pattern_box {
     display: flex;
